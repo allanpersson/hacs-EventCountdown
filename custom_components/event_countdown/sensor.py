@@ -1,4 +1,4 @@
-"""Sensors showing each configured Event Manager event."""
+"""Sensors showing each configured Event Countdown event."""
 from __future__ import annotations
 
 import logging
@@ -167,7 +167,7 @@ def _compute_event(event: dict, lang: dict[str, str]) -> dict | None:
         try:
             target = date(today.year, month, day)
         except ValueError:
-            _LOGGER.warning("Event Manager: invalid date for '%s'", name)
+            _LOGGER.warning("Event Countdown: invalid date for '%s'", name)
             return None
 
         if target < today:
@@ -223,7 +223,7 @@ def _compute_event(event: dict, lang: dict[str, str]) -> dict | None:
             ),
         }
     except Exception:
-        _LOGGER.exception("Event Manager: error processing event %s", event)
+        _LOGGER.exception("Event Countdown: error processing event %s", event)
         return None
 
 
@@ -257,8 +257,8 @@ class EventCountdownSensor(SensorEntity):
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={(DOMAIN, self._global_entry.entry_id)},
-            name="Event Manager",
-            manufacturer="Allan Persson",
+            name="Event Countdown",
+            manufacturer="CagosDk",
             entry_type=DeviceEntryType.SERVICE,
         )
 
