@@ -1,4 +1,4 @@
-"""Slot sensors showing the next N upcoming events, sorted like the original Node-RED flow."""
+"""Sensors showing each configured Event Countdown event."""
 from __future__ import annotations
 
 import logging
@@ -8,8 +8,8 @@ from datetime import date, timedelta
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
@@ -17,9 +17,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from .const import (
     CONF_DELETE_AFTER_OCCURRENCE,
     CONF_LANGUAGE,
-    CONF_NUM_SENSORS,
     DEFAULT_LANGUAGE,
-    DEFAULT_NUM_SENSORS,
     DOMAIN,
     ENTRY_TYPE,
     ENTRY_TYPE_EVENT,
@@ -39,59 +37,81 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    num_sensors = entry.options.get(
-        CONF_NUM_SENSORS, entry.data.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS)
-    )
+    """Set up one stable sensor for each configured event entry."""
     language_code = entry.options.get(
         CONF_LANGUAGE, entry.data.get(CONF_LANGUAGE, DEFAULT_LANGUAGE)
     )
     if language_code == "auto":
         language_code = hass.config.language
     lang = get_language(language_code)
+    sensors: dict[str, EventCountdownSensor] = {}
 
-    _remove_stale_slot_entities(hass, entry, num_sensors)
+    @callback
+    def _sync_entities() -> None:
+        current_entries = {
+            event_entry.entry_id: event_entry
+            for event_entry in hass.config_entries.async_entries(DOMAIN)
+            if event_entry.data.get(ENTRY_TYPE) == ENTRY_TYPE_EVENT
+        }
 
-    sensors = [EventSlotSensor(entry, slot, lang) for slot in range(num_sensors)]
-    async_add_entities(sensors, update_before_add=True)
+        stale_entry_ids = set(sensors) - set(current_entries)
+        for entry_id in stale_entry_ids:
+            sensor = sensors.pop(entry_id)
+            hass.async_create_task(sensor.async_remove(force_remove=True))
+            _remove_entity_from_registry(hass, sensor.unique_id)
+
+        new_sensors: list[EventCountdownSensor] = []
+        for event_entry in current_entries.values():
+            if event_entry.entry_id in sensors:
+                sensors[event_entry.entry_id].set_event_entry(event_entry)
+                continue
+            sensor = EventCountdownSensor(entry, event_entry, lang)
+            sensors[event_entry.entry_id] = sensor
+            new_sensors.append(sensor)
+
+        if new_sensors:
+            async_add_entities(new_sensors, update_before_add=True)
+
+        new_entry_ids = {new_sensor.event_entry_id for new_sensor in new_sensors}
+        for entry_id, sensor in sensors.items():
+            if entry_id not in new_entry_ids:
+                sensor.async_schedule_update_ha_state(force_refresh=True)
 
     @callback
     def _refresh(now=None) -> None:
         hass.async_create_task(_remove_expired_events(hass))
-        for sensor in sensors:
-            sensor.async_schedule_update_ha_state(force_refresh=True)
+        _sync_entities()
 
+    _remove_legacy_slot_entities(hass, entry)
+    _sync_entities()
     entry.async_on_unload(
         async_dispatcher_connect(hass, SIGNAL_EVENTS_CHANGED, _refresh)
     )
-    entry.async_on_unload(
-        async_track_time_interval(hass, _refresh, _UPDATE_INTERVAL)
-    )
+    entry.async_on_unload(async_track_time_interval(hass, _refresh, _UPDATE_INTERVAL))
 
 
-def _remove_stale_slot_entities(
-    hass: HomeAssistant, entry: ConfigEntry, num_sensors: int
-) -> None:
-    """Remove slot sensors left over from a previous, larger num_sensors setting."""
+def _remove_legacy_slot_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove old fixed slot entities created by previous versions."""
     ent_reg = er.async_get(hass)
-    prefix = f"{entry.entry_id}_event"
+    legacy_pattern = re.compile(rf"^{re.escape(entry.entry_id)}_event\d+$")
     for entity_entry in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
-        if not entity_entry.unique_id.startswith(prefix):
-            continue
-        try:
-            slot = int(entity_entry.unique_id[len(prefix):])
-        except ValueError:
-            continue
-        if slot >= num_sensors:
+        if entity_entry.unique_id and legacy_pattern.match(entity_entry.unique_id):
             ent_reg.async_remove(entity_entry.entity_id)
 
 
-def _collect_events(hass: HomeAssistant) -> list[dict]:
-    """Gather all event entries (data merged with options)."""
-    return [
-        {**e.data.get("event", {}), **e.options}
-        for e in hass.config_entries.async_entries(DOMAIN)
-        if e.data.get(ENTRY_TYPE) == ENTRY_TYPE_EVENT
-    ]
+def _remove_entity_from_registry(hass: HomeAssistant, unique_id: str | None) -> None:
+    """Remove an event entity registry entry after its event config entry disappears."""
+    if unique_id is None:
+        return
+    ent_reg = er.async_get(hass)
+    entity_id = ent_reg.async_get_entity_id("sensor", DOMAIN, unique_id)
+    if entity_id is not None:
+        ent_reg.async_remove(entity_id)
+
+
+def _event_from_entry(entry: ConfigEntry) -> dict:
+    """Return the latest event data for a config entry."""
+    return {**entry.data.get("event", {}), **entry.options}
 
 
 async def _remove_expired_events(hass: HomeAssistant) -> None:
@@ -102,7 +122,7 @@ async def _remove_expired_events(hass: HomeAssistant) -> None:
         if entry.data.get(ENTRY_TYPE) != ENTRY_TYPE_EVENT:
             continue
 
-        event = {**entry.data.get("event", {}), **entry.options}
+        event = _event_from_entry(entry)
         if not event.get(CONF_DELETE_AFTER_OCCURRENCE):
             continue
 
@@ -125,117 +145,118 @@ async def _remove_expired_events(hass: HomeAssistant) -> None:
             await hass.config_entries.async_remove(entry.entry_id)
 
 
-def _compute_all(events: list[dict], lang: dict[str, str]) -> list[dict]:
-    """Port of the Node-RED function node: compute, filter and sort events."""
-    today = date.today()
-    results: list[dict] = []
+def _compute_event(event: dict, lang: dict[str, str]) -> dict | None:
+    """Compute display data for a single event without mixing it with other events."""
+    try:
+        if event.get("disabled"):
+            return None
 
-    for event in events:
+        today = date.today()
+        name = event.get("name")
+        day = event.get("day")
+        month = event.get("month")
+        year = event.get("year")
+        if not name or not day or not month:
+            return None
+
+        event_type = (event.get("type") or EVENT_TYPE_BIRTHDAY).lower()
+        recurring = event.get("recurring")
+        if recurring is None:
+            recurring = event_type != EVENT_TYPE_EVENT
+
         try:
-            if event.get("disabled"):
-                continue
+            target = date(today.year, month, day)
+        except ValueError:
+            _LOGGER.warning("Event Countdown: invalid date for '%s'", name)
+            return None
 
-            name = event.get("name")
-            day = event.get("day")
-            month = event.get("month")
-            year = event.get("year")
-            if not name or not day or not month:
-                continue
+        if target < today:
+            if not recurring:
+                return None
+            target = date(today.year + 1, month, day)
 
-            event_type = (event.get("type") or EVENT_TYPE_BIRTHDAY).lower()
-            recurring = event.get("recurring")
-            if recurring is None:
-                recurring = event_type != EVENT_TYPE_EVENT
+        days_remaining = (target - today).days
+        age = (target.year - year) if isinstance(year, int) else None
+        soon_threshold = (
+            event.get("soon") if isinstance(event.get("soon"), int) else 30
+        )
+        is_soon = days_remaining <= soon_threshold
 
-            try:
-                target = date(today.year, month, day)
-            except ValueError:
-                _LOGGER.warning("Event Countdown: invalid date for '%s'", name)
-                continue
+        if days_remaining == 0:
+            day_text = lang["today"]
+        elif days_remaining == 1:
+            day_text = lang["tomorrow"]
+        else:
+            day_text = lang["in_days"].format(days=days_remaining)
 
-            if target < today:
-                if not recurring:
-                    continue
-                target = date(today.year + 1, month, day)
-
-            days_remaining = (target - today).days
-            age = (target.year - year) if isinstance(year, int) else None
-            soon_threshold = event.get("soon") if isinstance(event.get("soon"), int) else 30
-            is_soon = days_remaining <= soon_threshold
-
-            if days_remaining == 0:
-                day_text = lang["today"]
-            elif days_remaining == 1:
-                day_text = lang["tomorrow"]
-            else:
-                day_text = lang["in_days"].format(days=days_remaining)
-
-            if event_type == EVENT_TYPE_BIRTHDAY:
-                base = re.sub(
-                    lang["strip_word"], "", name, flags=re.IGNORECASE
-                ).strip()
-                full_name = (
-                    lang["birthday_with_age"].format(base=base, age=age, day_text=day_text)
-                    if age is not None
-                    else lang["birthday_no_age"].format(base=base, day_text=day_text)
+        if event_type == EVENT_TYPE_BIRTHDAY:
+            base = re.sub(lang["strip_word"], "", name, flags=re.IGNORECASE).strip()
+            full_name = (
+                lang["birthday_with_age"].format(base=base, age=age, day_text=day_text)
+                if age is not None
+                else lang["birthday_no_age"].format(base=base, day_text=day_text)
+            )
+        elif event_type == EVENT_TYPE_ANNIVERSARY:
+            full_name = (
+                lang["anniversary_with_age"].format(
+                    age=age, name=name.lower(), day_text=day_text
                 )
-            elif event_type == EVENT_TYPE_ANNIVERSARY:
-                full_name = (
-                    lang["anniversary_with_age"].format(
-                        age=age, name=name.lower(), day_text=day_text
-                    )
-                    if age is not None
-                    else lang["anniversary_no_age"].format(name=name, day_text=day_text)
-                )
-            else:
-                full_name = lang["event"].format(name=name, day_text=day_text)
+                if age is not None
+                else lang["anniversary_no_age"].format(name=name, day_text=day_text)
+            )
+        else:
+            full_name = lang["event"].format(name=name, day_text=day_text)
 
-            picture = event.get("picture")
-            event_date = (
+        return {
+            "name": name,
+            "full_name": full_name,
+            "type": event_type,
+            "age": age,
+            "days_remaining": days_remaining,
+            "soon": is_soon,
+            "soon_threshold": soon_threshold,
+            "picture": event.get("picture"),
+            "event_date": (
                 f"{year}-{month:02d}-{day:02d}"
                 if isinstance(year, int)
                 else f"{today.year}-{month:02d}-{day:02d}"
-            )
-
-            results.append(
-                {
-                    "name": name,
-                    "full_name": full_name,
-                    "type": event_type,
-                    "age": age,
-                    "days_remaining": days_remaining,
-                    "soon": is_soon,
-                    "soon_threshold": soon_threshold,
-                    "picture": picture,
-                    "event_date": event_date,
-                }
-            )
-        except Exception:
-            _LOGGER.exception("Event Countdown: error processing event %s", event)
-
-    # Sort: soon-events first, then by days remaining
-    results.sort(key=lambda x: (not x["soon"], x["days_remaining"]))
-    return results
+            ),
+        }
+    except Exception:
+        _LOGGER.exception("Event Countdown: error processing event %s", event)
+        return None
 
 
-class EventSlotSensor(SensorEntity):
-    """One slot in the sorted list of upcoming events (event_0..N-1)."""
+class EventCountdownSensor(SensorEntity):
+    """A sensor bound to exactly one event config entry."""
 
-    _attr_icon = "empty"
+    _attr_icon = "mdi:calendar-clock"
     _attr_should_poll = False
 
-    def __init__(self, entry: ConfigEntry, slot: int, lang: dict[str, str]) -> None:
-        self._entry = entry
-        self._slot = slot
+    def __init__(
+        self, global_entry: ConfigEntry, event_entry: ConfigEntry, lang: dict[str, str]
+    ) -> None:
+        self._global_entry = global_entry
+        self._event_entry = event_entry
         self._lang = lang
-        self._attr_unique_id = f"{entry.entry_id}_event{slot}"
-        self._attr_name = lang["slot_name"].format(slot=slot)
+        self._attr_unique_id = f"{global_entry.entry_id}_event_{event_entry.entry_id}"
+        self._attr_name = event_entry.title
         self._data: dict | None = None
+
+    @property
+    def event_entry_id(self) -> str:
+        """Return the config entry id for the event backing this sensor."""
+        return self._event_entry.entry_id
+
+    def set_event_entry(self, event_entry: ConfigEntry) -> None:
+        """Update the config entry backing this sensor after edits."""
+        self._event_entry = event_entry
+        self._attr_name = event_entry.title
 
     @property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
+            identifiers={(DOMAIN, self._global_entry.entry_id)},
             name="Event Countdown",
             manufacturer="CagosDk",
             entry_type=DeviceEntryType.SERVICE,
@@ -243,7 +264,7 @@ class EventSlotSensor(SensorEntity):
 
     @property
     def native_value(self) -> str:
-        """Whether this slot holds an event that should be displayed ("soon")."""
+        """Whether this event should be displayed as upcoming ("soon")."""
         return "true" if self._data and self._data["soon"] else "false"
 
     @property
@@ -253,7 +274,6 @@ class EventSlotSensor(SensorEntity):
     @property
     def extra_state_attributes(self):
         if not self._data:
-            # Mirror the Node-RED fallback message
             return {"full_name": self._lang["no_event"], "soon": False}
         return {
             "name": self._data["name"],
@@ -268,5 +288,4 @@ class EventSlotSensor(SensorEntity):
         }
 
     def update(self) -> None:
-        computed = _compute_all(_collect_events(self.hass), self._lang)
-        self._data = computed[self._slot] if self._slot < len(computed) else None
+        self._data = _compute_event(_event_from_entry(self._event_entry), self._lang)

@@ -22,8 +22,7 @@ The integration is configured entirely through the UI, with two kinds of entries
 
 Created automatically the first time the integration is added. Use its **Configure** button to set:
 
-- **Number of sensors** – how many slot sensors to create (default: 4). They always show the next N upcoming events, sorted with the soonest first. If you lower this number, the surplus sensors are removed automatically (instead of becoming "unavailable").
-- **Language** – language used for the sensor's `full_name` text:
+- **Language** – language used for each sensor's `full_name` text:
   - **Automatic** (default) – follows the language configured in Home Assistant (Settings → System → General)
   - **English**
   - **Dansk**
@@ -77,9 +76,9 @@ The integration recomputes the upcoming events every hour, and whenever an event
 
 ## Sensors
 
-The Global Configuration entry creates N slot sensors (`sensor.event_countdown_event_0` … `event_(N-1)`), each showing the next upcoming events sorted with the soonest (and "soon") events first:
+The Global Configuration entry creates one stable sensor for each event entry you add. Sensors are no longer limited by a fixed slot count, and each sensor stays bound to its own event so attributes and friendly names cannot be mixed with data from another event.
 
-- **State** – `true` if this slot's event is within its `soon` threshold (i.e. it should be displayed), otherwise `false`. Use this to control card visibility (see below).
+- **State** – `true` if this event is within its `soon` threshold (i.e. it should be displayed), otherwise `false`. Use this to control card visibility (see below).
 - **Attributes:**
   - `full_name` – human-readable text, e.g. *"Mors 46 års fødselsdag om 14 dage"*
   - `name` – event name
@@ -91,9 +90,9 @@ The Global Configuration entry creates N slot sensors (`sensor.event_countdown_e
   - `event_date` – original event date (YYYY-MM-DD)
   - `entity_picture` – path to image, only set if a `picture` was configured for the event
 
-If there are fewer upcoming events than sensors, the remaining sensors show state `false` and `full_name: "No event"` (or `"Ingen begivenhed"` in Danish).
+If an event is disabled or a non-recurring event has passed, its sensor shows state `false` and `full_name: "No event"` (or `"Ingen begivenhed"` in Danish).
 
-If no `picture` is configured for an event, `entity_picture` is left empty and the entity's icon is set to `empty`, so the card shows neither a broken-image placeholder nor a fallback icon.
+If no `picture` is configured for an event, `entity_picture` is left empty and the entity's icon is set to `mdi:calendar-clock`.
 
 ## Showing `full_name` on a dashboard
 
@@ -112,7 +111,7 @@ This way the card displays text like *"Mors 46 års fødselsdag om 14 dage"* tog
 Because the sensor's state is `true`/`false`, you can add a **visibility condition** to a card so it's only shown when the event is within its `soon` threshold:
 
 1. Edit the card → **Visibility** (*"Synlighed"*) → **Add condition** (*"Tilføj betingelse"*).
-2. Choose **Entity state** (*"Entitetstilstand"*), select the `sensor.event_countdown_event_N` entity, leave **Attribute** empty, and set **State equals** (*"Tilstand er lig med"*) to `true`.
+2. Choose **Entity state** (*"Entitetstilstand"*), select the event's sensor entity, leave **Attribute** empty, and set **State equals** (*"Tilstand er lig med"*) to `true`.
 
-The card is then hidden automatically whenever that slot has no "soon" event.
+The card is then hidden automatically whenever that event is not within its "soon" threshold.
 

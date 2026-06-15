@@ -6,9 +6,7 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_DELETE_AFTER_OCCURRENCE,
     CONF_LANGUAGE,
-    CONF_NUM_SENSORS,
     DEFAULT_LANGUAGE,
-    DEFAULT_NUM_SENSORS,
     DOMAIN,
     ENTRY_TYPE,
     ENTRY_TYPE_EVENT,
@@ -131,7 +129,7 @@ class EventCountdownConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # First install creates the global configuration entry directly
             return self.async_create_entry(
                 title="⚙️ Global Configuration",
-                data={ENTRY_TYPE: ENTRY_TYPE_GLOBAL, CONF_NUM_SENSORS: DEFAULT_NUM_SENSORS},
+                data={ENTRY_TYPE: ENTRY_TYPE_GLOBAL},
             )
 
         # Integration already installed → adding an event
@@ -166,15 +164,10 @@ class GlobalOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(
                 title="",
                 data={
-                    CONF_NUM_SENSORS: int(user_input[CONF_NUM_SENSORS]),
                     CONF_LANGUAGE: user_input[CONF_LANGUAGE],
                 },
             )
 
-        current_num_sensors = self._config_entry.options.get(
-            CONF_NUM_SENSORS,
-            self._config_entry.data.get(CONF_NUM_SENSORS, DEFAULT_NUM_SENSORS),
-        )
         current_language = self._config_entry.options.get(
             CONF_LANGUAGE,
             self._config_entry.data.get(CONF_LANGUAGE, DEFAULT_LANGUAGE),
@@ -183,13 +176,6 @@ class GlobalOptionsFlow(config_entries.OptionsFlow):
             step_id="global",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_NUM_SENSORS, default=current_num_sensors
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            min=1, max=50, step=1, mode=selector.NumberSelectorMode.BOX
-                        )
-                    ),
                     vol.Required(
                         CONF_LANGUAGE, default=current_language
                     ): selector.SelectSelector(
