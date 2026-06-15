@@ -26,10 +26,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     if _is_global(entry):
-        # The global entry owns the slot sensors
+        # The global entry owns the event sensors
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     else:
-        # Event entries hold data only — notify slot sensors to recompute
+        # Event entries hold data only — notify event sensors to sync/recompute
         async_dispatcher_send(hass, SIGNAL_EVENTS_CHANGED)
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -39,14 +39,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if _is_global(entry):
         return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    # Event entry removed/unloaded — recompute slots
+    # Event entry removed/unloaded — sync/recompute event sensors
     async_dispatcher_send(hass, SIGNAL_EVENTS_CHANGED)
     return True
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     if _is_global(entry):
-        # Number of sensors changed — reload to recreate slot sensors
+        # Global options changed — reload sensors to apply them
         await hass.config_entries.async_reload(entry.entry_id)
     else:
         # Event edited — just recompute
@@ -78,8 +78,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     else:
         title = entry.title
-        if title == "Global Configuration":
-            title = "⚙️ Global Configuration"
+        if title in {"Global Configuration", "⚙️ Global Configuration"}:
+            title = "⚙️ Event Manager Configuration"
         hass.config_entries.async_update_entry(entry, title=title, version=5)
 
     return True

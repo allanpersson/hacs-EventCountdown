@@ -1,11 +1,14 @@
 {
   "domain": "event_countdown",
-  "name": "Event Countdown",
-  "documentation": "https://github.com/CagosDk/hacs-EventCountdown",
-  "version": "1.0.0",
-  "codeowners": ["@CagosDk"],
+  "name": "Event Manager",
+  "documentation": "https://github.com/allanpersson/hacs-EventManager",
+  "version": "1.0.1+build.22",
+  "codeowners": [
+    "@allanpersson"
+  ],
   "requirements": [],
   "iot_class": "calculated",
   "config_flow": true,
-  "homeassistant": "2023.6.0"
+  "homeassistant": "2023.6.0",
+  "issue_tracker": "https://github.com/allanpersson/hacs-EventManager/issues"
 }

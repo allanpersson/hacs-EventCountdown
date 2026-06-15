@@ -31,11 +31,9 @@
       "global": {
         "title": "Global configuration",
         "data": {
-          "num_sensors": "Number of sensors",
           "language": "Language"
         },
         "data_description": {
-          "num_sensors": "How many slot sensors to create. They always show the next N upcoming events, sorted with the soonest first.",
           "language": "Language used for the sensor text (full_name). \"Automatic\" uses the language configured in Home Assistant."
         }
       },
