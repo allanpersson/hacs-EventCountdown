@@ -78,8 +78,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     else:
         title = entry.title
-        if title == "Global Configuration":
-            title = "⚙️ Global Configuration"
+        if title in {"Global Configuration", "⚙️ Global Configuration"}:
+            title = "⚙️ Event Manager Configuration"
         hass.config_entries.async_update_entry(entry, title=title, version=5)
 
     return True

@@ -1,4 +1,4 @@
-# Event Countdown
+# Event Manager
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -7,12 +7,22 @@ A Home Assistant integration that creates sensors for upcoming events – birthd
 
 ![Example dashboard with upcoming events](images/dashboard-example.png)
 
+
+## Maintainer and credits
+
+- Maintainer / app developer: [@allanpersson](https://github.com/allanpersson)
+- Original developer: [@CagosDk](https://github.com/CagosDk), credited for the original Event Countdown integration this project is based on.
+
+## Versioning and build numbers
+
+This project uses Semantic Versioning plus a monotonically increasing build number: `MAJOR.MINOR.PATCH+build.N`. The current build metadata is stored in `build.json`, and every future code, documentation, or packaging change must increment the build number.
+
 ## Installation via HACS
 
 1. Add this repository as a **Custom Repository** in HACS (category: Integration)
-2. Find "Event Countdown" in HACS and install
+2. Find "Event Manager" in HACS and install
 3. Restart Home Assistant
-4. Go to **Settings → Devices & Services → Add Integration** and search for "Event Countdown"
+4. Go to **Settings → Devices & Services → Add Integration** and search for "Event Manager"
 
 ## Configuration
 
@@ -29,7 +39,7 @@ Created automatically the first time the integration is added. Use its **Configu
 
 ### Events
 
-Add one entry per event via **Add Integration → Event Countdown**. Each event has its own **Configure** / **Delete** actions and the following fields:
+Add one entry per event via **Add Integration → Event Manager**. Each event has its own **Configure** / **Delete** actions and the following fields:
 
 | Field | Required | Description |
 |-------|----------|-------------|

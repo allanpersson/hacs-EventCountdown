@@ -1,0 +1,6 @@
+{
+  "version": "1.0.1",
+  "build": 22,
+  "full_version": "1.0.1+build.22",
+  "scheme": "Semantic Versioning with monotonically increasing build metadata. Increment build for every future code or documentation change."
+}

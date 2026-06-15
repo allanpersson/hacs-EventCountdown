@@ -138,7 +138,7 @@ async def _remove_expired_events(hass: HomeAssistant) -> None:
 
         if target < today:
             _LOGGER.info(
-                "Event Countdown: removing '%s' (occurred on %s)",
+                "Event Manager: removing '%s' (occurred on %s)",
                 event.get("name"),
                 target,
             )
